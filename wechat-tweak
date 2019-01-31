@@ -1,0 +1,98 @@
+#!/bin/bash
+
+app_path=/Applications/WeChat.app/Contents/MacOS
+app_name=WeChat
+work_path=${HOME}/.wechat_tweak
+version_file=version
+
+# Can not find the WeChat.
+if ! [ -f "${app_path}/${app_name}" ]; then
+	echo "Can not find the WeChat."
+	exit 1
+fi
+
+# Should be run using sudo
+if ! [[ $EUID -eq 0 ]]; then
+  echo "WechatTweak should be run using sudo or as the root user."
+  exit 1
+fi
+
+# Create work folder
+if [ ! -e $work_path ]; then
+  mkdir $work_path
+fi
+
+cd $work_path
+
+# Current version 
+if [ -f $version_file ]; then
+  current_version=$(cat $version_file)
+  current_version=${current_version//$'\r'/}
+  echo "WechatTweak-macOS version:" ${current_version}
+fi
+
+get_latest_version() {
+  if [ -z $latest_version ]; then
+    echo "Detection version..."
+    latest_version=$(curl -I -s https://github.com/Sunnyyoung/WeChatTweak-macOS/releases/latest | grep Location | sed -n 's/.*\/\(.*\)/\1/p')
+    echo "WechatTweak-macOS latest version:" ${latest_version}
+    if [ -z "$latest_version" ]; then
+      echo "Detection failed, install existing version."
+    else
+      latest_version=${latest_version//$'\r'/}
+      if [ "$current_version" != $latest_version ]; then
+        echo "Discover new version:" ${latest_version}
+      fi
+    fi
+  fi
+}
+
+download_wechat_tweak() {
+  _version=$latest_version
+  _old_version=$current_version
+  # Delete old version
+  if [ -n $_old_version ] && [ "$_old_version" != "$_version" ] && [ -e WeChatTweak-macOS-$_old_version ]; then
+    rm -rf WeChatTweak-macOS-$_old_version
+    echo "Delete old version:" ${_old_version}
+  fi
+  # Download
+  if [ ! -e WeChatTweak-macOS-$_version ]; then
+    echo "Downloading..."
+    curl -L -o ${_version}.zip https://github.com/Sunnyyoung/WeChatTweak-macOS/archive/${_version}.zip
+    if [ 0 -eq $? ]; then
+      # Unzip
+      unzip -o -q ${_version}.zip
+      # Delete zip
+      rm ${_version}.zip
+      echo "Download completed."
+    else
+      echo "Download failed, please try again later."
+      exit 1
+    fi
+  fi
+  # Save version
+  echo $_version >$version_file
+}
+
+install_handle() {
+  get_latest_version
+  download_wechat_tweak
+  echo "Installing..."
+  cd ./WeChatTweak-macOS-$_version
+  make install
+}
+
+uninstall_handle() {
+  echo "Uninstalling..."
+  cd ./WeChatTweak-macOS-$current_version
+  make uninstall
+}
+
+if [ $1x == "install"x ]; then
+  install_handle
+elif [ $1x == "uninstall"x ]; then
+  uninstall_handle
+else 
+  echo "install - Install or Upgrade the dylib"
+  echo "uninstall - Uninstall the dylib"
+fi
